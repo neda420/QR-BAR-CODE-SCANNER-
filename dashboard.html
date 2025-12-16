@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Code Scanner - Dashboard</title>
+    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-firestore-compat.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body {
+            background-color: #f0f2f5;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            flex-grow: 1;
+        }
+        .header {
+            background-color: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .scan-item {
+            display: flex;
+            align-items: center;
+            padding: 1rem 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .scan-item:last-child {
+            border-bottom: none;
+        }
+        .scan-icon {
+            font-size: 1.5rem;
+            margin-right: 1rem;
+            color: #4f46e5;
+        }
+        .toast {
+            visibility: hidden;
+            min-width: 250px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 2px;
+            padding: 16px;
+            position: fixed;
+            z-index: 1;
+            left: 50%;
+            bottom: 30px;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+        .toast.show {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 class="text-2xl font-bold" id="welcomeMessage">Welcome, Guest</h1>
+        <button id="logoutBtn" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">Logout</button>
+    </div>
+
+    <div class="container">
+        <div class="card">
+            <h2 class="text-xl font-semibold mb-4">Scan QR Code</h2>
+            <div id="reader" style="width: 100%;"></div>
+            <div class="flex space-x-2 mt-4">
+                <button id="openCameraBtn" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex-1">Open Camera for Scan</button>
+                <input type="file" id="qrFileInput" accept="image/*" class="hidden">
+                <button id="uploadPhotoBtn" class="bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded flex-1">Upload Photo for Scan</button>
+            </div>
+            <div id="cameraControls" class="mt-4 flex justify-center hidden">
+                <button id="stopCameraBtn" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">Stop Camera</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="flex flex-col md:flex-row justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold mb-2 md:mb-0">My Scans</h2>
+                <div class="flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-2 w-full md:w-auto">
+                    <input type="text" id="searchHistory" placeholder="Search history..." class="p-2 border rounded w-full">
+                    <button id="exportCsvBtn" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded w-full">Download My History (CSV)</button>
+                </div>
+            </div>
+            <div class="stat-card bg-blue-100 p-4 rounded-lg mb-4">
+                <p class="text-lg font-medium">My Total Scans: <span id="totalScans">0</span></p>
+            </div>
+            <div id="scanHistoryList"></div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast">Scan Successful!</div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDBwtBhV_sOH5VaO24nbqZrX1-IbXLlyac",
+            authDomain: "qr-code-scanner-b6d67.firebaseapp.com",
+            projectId: "qr-code-scanner-b6d67",
+            storageBucket: "qr-code-scanner-b6d67.firebasestorage.app",
+            messagingSenderId: "854277398318",
+            appId: "1:854277398318:web:40b48f4240844f05d524bf",
+            measurementId: "G-2TJ3TCSTGM"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        const scanHistoryRef = db.collection('scan_history');
+
+        const welcomeMessage = document.getElementById('welcomeMessage');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const qrFileInput = document.getElementById('qrFileInput');
+        const openCameraBtn = document.getElementById('openCameraBtn');
+        const uploadPhotoBtn = document.getElementById('uploadPhotoBtn');
+        const stopCameraBtn = document.getElementById('stopCameraBtn');
+        const cameraControls = document.getElementById('cameraControls');
+        const totalScansSpan = document.getElementById('totalScans');
+        const searchHistoryInput = document.getElementById('searchHistory');
+        const exportCsvBtn = document.getElementById('exportCsvBtn');
+        const scanHistoryList = document.getElementById('scanHistoryList');
+        const toast = document.getElementById('toast');
+
+        let currentUser = null;
+        let allScans = [];
+
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                currentUser = user;
+                welcomeMessage.textContent = user.isAnonymous ? 'Welcome, Guest' : `Welcome, ${user.email}`;
+                fetchUserScans(user.uid);
+            } else {
+                window.location.href = 'index.html';
+            }
+        });
+
+        logoutBtn.addEventListener('click', async () => {
+            await auth.signOut();
+            window.location.href = 'index.html';
+        });
+
+        const html5QrCode = new Html5Qrcode("reader", true);
+
+        const qrCodeScannerConfig = {
+            fps: 10,
+            qrbox: { width: 250, height: 250 },
+            tryHarder: true, // Forcing deeper scan for blurry codes
+            formatsToSupport: [
+                Html5QrcodeSupportedFormats.QR_CODE,
+                Html5QrcodeSupportedFormats.AZTEC,
+                Html5QrcodeSupportedFormats.CODABAR,
+                Html5QrcodeSupportedFormats.CODE_39,
+                Html5QrcodeSupportedFormats.CODE_93,
+                Html5QrcodeSupportedFormats.CODE_128,
+                Html5QrcodeSupportedFormats.DATA_MATRIX,
+                Html5QrcodeSupportedFormats.ITF,
+                Html5QrcodeSupportedFormats.EAN_13,
+                Html5QrcodeSupportedFormats.EAN_8,
+                Html5QrcodeSupportedFormats.PDF_417,
+                Html5QrcodeSupportedFormats.UPC_A,
+                Html5QrcodeSupportedFormats.UPC_E
+            ],
+            experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+        };
+
+        const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
+            console.log(`Scan result: ${decodedText}`, decodedResult);
+            showToast();
+            playBeep();
+            saveScanToFirestore(decodedText);
+        };
+
+        openCameraBtn.addEventListener('click', async () => {
+            if (!html5QrCode.isScanning) {
+                try {
+                    await html5QrCode.start({ facingMode: "environment" }, qrCodeScannerConfig, qrCodeSuccessCallback);
+                    openCameraBtn.classList.add('hidden');
+                    uploadPhotoBtn.classList.add('hidden');
+                    cameraControls.classList.remove('hidden');
+                } catch (err) {
+                    console.error("Error starting camera:", err);
+                    alert("Error starting camera. Please ensure camera access is granted.");
+                }
+            }
+        });
+
+        stopCameraBtn.addEventListener('click', async () => {
+            if (html5QrCode.isScanning) {
+                await html5QrCode.stop().catch(err => console.error("Error stopping camera:", err));
+                openCameraBtn.classList.remove('hidden');
+                uploadPhotoBtn.classList.remove('hidden');
+                cameraControls.classList.add('hidden');
+            }
+        });
+
+        uploadPhotoBtn.addEventListener('click', () => {
+            qrFileInput.click();
+        });
+
+        qrFileInput.addEventListener('change', async e => {
+            if (e.target.files.length === 0) return;
+
+            if (html5QrCode.isScanning) {
+                await html5QrCode.stop().catch(err => console.error("Error stopping camera:", err));
+                resetUI(); 
+            }
+
+            const imageFile = e.target.files[0];
+
+            const fileConfig = {
+                fps: 10,
+                tryHarder: true 
+            };
+
+            html5QrCode.scanFile(imageFile, false, fileConfig)
+                .then(result => {
+                    qrCodeSuccessCallback(result);
+                    e.target.value = '';
+                    resetUI(); 
+                })
+                .catch(err => {
+                    console.error("File Scan Error:", err);
+                    alert("⚠️ Scan Failed.\n\n" +
+                          "Tips:\n" +
+                          "1. If the QR code has a transparent background, save it with a WHITE background first.\n" +
+                          "2. Ensure the image is not too blurry.");
+                    e.target.value = ''; 
+                    resetUI(); 
+                });
+        });
+
+        function resetUI() {
+            openCameraBtn.classList.remove('hidden');
+            uploadPhotoBtn.classList.remove('hidden');
+            cameraControls.classList.add('hidden');
+        }
+
+        function playBeep() {
+       
+            const audio = new Audio('./beep.mp3'); 
+            audio.play().catch(e => console.log("Audio play failed (user interaction needed first):", e));
+        }
+
+        function showToast() {
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        async function saveScanToFirestore(content) {
+            if (!currentUser) return;
+
+            const type = content.startsWith('http') || content.startsWith('https') ? 'URL' : 'TEXT';
+            const email = currentUser.isAnonymous ? 'Anonymous' : currentUser.email;
+
+            await scanHistoryRef.add({
+                content: content,
+                type: type,
+                user_id: currentUser.uid,
+                email: email,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                date_string: new Date().toLocaleString()
+            });
+          
+        }
+
+        async function fetchUserScans(userId) {
+            scanHistoryRef.where('user_id', '==', userId).orderBy('timestamp', 'desc')
+                .onSnapshot(snapshot => {
+                    allScans = [];
+                    snapshot.forEach(doc => {
+                        allScans.push({ id: doc.id, ...doc.data() });
+                    });
+                    totalScansSpan.textContent = allScans.length;
+                    renderScanHistory(allScans);
+                });
+        }
+
+        function renderScanHistory(scans) {
+            scanHistoryList.innerHTML = '';
+            scans.forEach(scan => {
+                const scanItem = document.createElement('div');
+                scanItem.className = 'scan-item';
+                scanItem.innerHTML = `
+                    <i class="scan-icon ${scan.type === 'URL' ? 'fas fa-link' : 'fas fa-font'}"></i>
+                    <div class="flex-1">
+                        <p class="font-medium">${scan.content.length > 50 ? scan.content.substring(0, 50) + '...' : scan.content}</p>
+                        <p class="text-sm text-gray-500">${scan.date_string}</p>
+                    </div>
+                    <div class="space-x-2">
+                        <button onclick="copyToClipboard('${scan.content.replace(/'/g, "\\'")}')" class="bg-blue-500 hover:bg-blue-700 text-white text-sm py-1 px-3 rounded">Copy</button>
+                        ${scan.type === 'URL' ? `<button onclick="openUrl('${scan.content.replace(/'/g, "\\'")}')" class="bg-purple-500 hover:bg-purple-700 text-white text-sm py-1 px-3 rounded">Open</button>` : ''}
+                        <button onclick="deleteScan('${scan.id}')" class="bg-red-500 hover:bg-red-700 text-white text-sm py-1 px-3 rounded">Delete</button>
+                    </div>
+                `;
+                scanHistoryList.appendChild(scanItem);
+            });
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+            });
+        }
+
+        function openUrl(url) {
+            window.open(url, '_blank');
+        }
+
+        async function deleteScan(scanId) {
+            if (confirm('Are you sure you want to delete this scan?')) {
+                await scanHistoryRef.doc(scanId).delete();
+            }
+        }
+
+        searchHistoryInput.addEventListener('input', e => {
+            const searchTerm = e.target.value.toLowerCase();
+            const filteredScans = allScans.filter(scan => 
+                scan.content.toLowerCase().includes(searchTerm) || 
+                scan.type.toLowerCase().includes(searchTerm) ||
+                scan.date_string.toLowerCase().includes(searchTerm)
+            );
+            renderScanHistory(filteredScans);
+        });
+
+        exportCsvBtn.addEventListener('click', () => {
+            exportToCsv(allScans, 'my_scan_history.csv');
+        });
+
+        function exportToCsv(data, filename) {
+            if (data.length === 0) {
+                alert("No data to export.");
+                return;
+            }
+
+            const header = ["Content", "Type", "Email", "Date"];
+            const rows = data.map(item => [
+                `"${item.content.replace(/"/g, '""')}"`,
+                item.type,
+                item.email,
+                item.date_string
+            ]);
+
+            let csvContent = header.join(",") + "\n";
+            rows.forEach(row => {
+                csvContent += row.join(",") + "\n";
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            if (link.download !== undefined) {
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', filename);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        }
+    </script>
+</body>
+</html>

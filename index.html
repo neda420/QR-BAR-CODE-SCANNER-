@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Code Scanner - Login</title>
+    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-firestore-compat.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            width: 100%;
+            max-width: 400px;
+        }
+        .tab-button {
+            padding: 0.75rem 1.5rem;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+        }
+        .tab-button.active {
+            border-bottom-color: #4f46e5;
+            color: #4f46e5;
+        }
+        .input-field {
+            width: 100%;
+            padding: 0.75rem;
+            margin-bottom: 1rem;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+        }
+        .btn-primary {
+            background-color: #4f46e5;
+            color: white;
+            padding: 0.75rem;
+            border-radius: 4px;
+            width: 100%;
+        }
+        .btn-secondary {
+            background-color: #6b7280;
+            color: white;
+            padding: 0.75rem;
+            border-radius: 4px;
+            width: 100%;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1 class="text-3xl font-bold text-center mb-6">QR Code Scanner</h1>
+        <div class="flex justify-center mb-6">
+            <button id="signInTab" class="tab-button active">Sign In</button>
+            <button id="createAccountTab" class="tab-button">Create Account</button>
+        </div>
+
+        <div id="signInForm">
+            <input type="email" id="signInEmail" placeholder="Email" class="input-field">
+            <input type="password" id="signInPassword" placeholder="Password" class="input-field">
+            <button id="signInBtn" class="btn-primary">Sign In</button>
+        </div>
+
+        <div id="createAccountForm" class="hidden">
+            <input type="email" id="createEmail" placeholder="Email" class="input-field">
+            <input type="password" id="createPassword" placeholder="Password" class="input-field">
+            <button id="createAccountBtn" class="btn-primary">Create Account</button>
+        </div>
+
+        <button id="guestAccessBtn" class="btn-secondary">Skip & Scan as Guest</button>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDBwtBhV_sOH5VaO24nbqZrX1-IbXLlyac",
+            authDomain: "qr-code-scanner-b6d67.firebaseapp.com",
+            projectId: "qr-code-scanner-b6d67",
+            storageBucket: "qr-code-scanner-b6d67.firebasestorage.app",
+            messagingSenderId: "854277398318",
+            appId: "1:854277398318:web:40b48f4240844f05d524bf",
+            measurementId: "G-2TJ3TCSTGM"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        const ADMIN_EMAIL = "nadim015582@gmail.com"; 
+
+        const signInTab = document.getElementById('signInTab');
+        const createAccountTab = document.getElementById('createAccountTab');
+        const signInForm = document.getElementById('signInForm');
+        const createAccountForm = document.getElementById('createAccountForm');
+        const signInEmail = document.getElementById('signInEmail');
+        const signInPassword = document.getElementById('signInPassword');
+        const signInBtn = document.getElementById('signInBtn');
+        const createEmail = document.getElementById('createEmail');
+        const createPassword = document.getElementById('createPassword');
+        const createAccountBtn = document.getElementById('createAccountBtn');
+        const guestAccessBtn = document.getElementById('guestAccessBtn');
+
+        signInTab.addEventListener('click', () => {
+            signInTab.classList.add('active');
+            createAccountTab.classList.remove('active');
+            signInForm.classList.remove('hidden');
+            createAccountForm.classList.add('hidden');
+        });
+
+        createAccountTab.addEventListener('click', () => {
+            createAccountTab.classList.add('active');
+            signInTab.classList.remove('active');
+            createAccountForm.classList.remove('hidden');
+            signInForm.classList.add('hidden');
+        });
+
+        signInBtn.addEventListener('click', async () => {
+            try {
+                const userCredential = await auth.signInWithEmailAndPassword(signInEmail.value, signInPassword.value);
+                const user = userCredential.user;
+                if (user.email === ADMIN_EMAIL) {
+                    window.location.href = 'admin.html';
+                } else {
+                    window.location.href = 'dashboard.html';
+                }
+            } catch (error) {
+                alert(error.message);
+            }
+        });
+
+        createAccountBtn.addEventListener('click', async () => {
+            try {
+                const userCredential = await auth.createUserWithEmailAndPassword(createEmail.value, createPassword.value);
+
+                const user = userCredential.user;
+                if (user.email === ADMIN_EMAIL) {
+                    window.location.href = 'admin.html';
+                } else {
+                    window.location.href = 'dashboard.html';
+                }
+            } catch (error) {
+                alert(error.message);
+            }
+        });
+
+        guestAccessBtn.addEventListener('click', async () => {
+            try {
+                await auth.signInAnonymously();
+                window.location.href = 'dashboard.html';
+            } catch (error) {
+                alert(error.message);
+            }
+        });
+
+        // Checking if user is already signed in
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                if (user.isAnonymous) {
+                    window.location.href = 'dashboard.html';
+                } else if (user.email === ADMIN_EMAIL) {
+                    window.location.href = 'admin.html';
+                } else {
+                    window.location.href = 'dashboard.html';
+                }
+            }
+        });
+    </script>
+</body>
+</html>
