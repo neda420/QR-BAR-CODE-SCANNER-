@@ -109,16 +109,7 @@
     </div>
 
     <script>
-        const firebaseConfig = {
-         
-        };
-
-        firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const db = firebase.firestore();
-        const scanHistoryRef = db.collection('scan_history');
-        
-        const ADMIN_EMAIL = "nadim015582@gmail.com"; 
+    
 
         const logoutBtn = document.getElementById('logoutBtn');
         const totalScansCount = document.getElementById('totalScansCount');
