@@ -81,15 +81,12 @@
     </div>
 
     <script>
-        const firebaseConfig = {
-            
-        };
-
+        const firebaseConfig = {};
         firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const db = firebase.firestore();
 
-        const ADMIN_EMAIL = "nadim015582@gmail.com"; 
+        const ADMIN_EMAIL = ""; 
 
         const signInTab = document.getElementById('signInTab');
         const createAccountTab = document.getElementById('createAccountTab');
